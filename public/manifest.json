@@ -1,0 +1,15 @@
+{
+  "name": "StockPro System",
+  "short_name": "StockPro",
+  "start_url": "/login.html", 
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2897/2897830.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
