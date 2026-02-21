@@ -1,7 +1,7 @@
 {
   "name": "StockPro System",
   "short_name": "StockPro",
-  "start_url": "/login.html", 
+  "start_url": "/index.html", 
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
