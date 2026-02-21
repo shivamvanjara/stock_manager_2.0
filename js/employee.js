@@ -4,80 +4,73 @@ import { collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, getDoc, q
 
 let currentSelectedId = null;
 let currentMode = "in"; 
-let currentEditingId = null; // Tracks if we are editing an existing request
+let currentEditingId = null; 
 
 onAuthStateChanged(auth, async (user) => {
-    if (!user) { location.href = "login.html"; return; }
-    
+    if (!user) { location.href = "index.html"; return; }
     const snap = await getDoc(doc(db, "users", user.uid));
-    if (!snap.exists() || snap.data().role !== "employee") {
-        // Optional: Redirect non-employees
-    }
-
     loadProducts();
     loadMyRequests();
 });
 
-window.logout = () => signOut(auth).then(() => location.href = "login.html");
+window.logout = () => signOut(auth).then(() => location.href = "index.html");
 
-// --- MODAL CONTROLS ---
 window.openActionModal = (id, name, mode) => {
     currentSelectedId = id;
     currentMode = mode;
-    currentEditingId = null; // Reset editing mode
-    
+    currentEditingId = null; 
     const badge = document.getElementById("modalTypeBadge");
     badge.innerText = mode === "in" ? "STOCK IN" : "STOCK OUT";
     badge.className = mode === "in" ? "badge badge-approved" : "badge badge-rejected";
-    
     document.getElementById("modalProdName").innerText = name;
     document.getElementById("reqQty").value = "";
+    document.getElementById("reqNote").value = ""; // Reset note
     document.getElementById("actionModal").style.display = "flex";
 };
 
-// NEW: Open modal for editing a pending request
 window.openEditModal = (reqId, name, qty) => {
     currentEditingId = reqId;
     currentMode = qty >= 0 ? "in" : "out";
-    
     const badge = document.getElementById("modalTypeBadge");
     badge.innerText = "EDIT REQUEST";
     badge.className = "badge badge-pending"; 
-
     document.getElementById("modalProdName").innerText = name;
     document.getElementById("reqQty").value = Math.abs(qty);
     document.getElementById("actionModal").style.display = "flex";
 };
 
 window.openNewProductModal = () => document.getElementById("newProductModal").style.display = "flex";
-
 window.closeModals = () => { 
     document.getElementById("actionModal").style.display = "none"; 
     document.getElementById("newProductModal").style.display = "none";
     currentEditingId = null;
 };
 
-// --- DATABASE ACTIONS ---
 window.submitStockRequest = async function() {
     const qty = document.getElementById("reqQty").value;
+    const note = document.getElementById("reqNote").value; // Capture note
     if (!qty || qty <= 0) return alert("Enter valid quantity");
-
     const finalQty = currentMode === "out" ? -Math.abs(qty) : Math.abs(qty);
 
     try {
         if (currentEditingId) {
-            // UPDATE EXISTING PENDING REQUEST
             await updateDoc(doc(db, "requests", currentEditingId), {
                 quantity: Number(finalQty),
+                note: note,
                 updatedAt: serverTimestamp()
             });
             alert("Request Updated!");
         } else {
-            // CREATE NEW REQUEST
+            const userSnap = await getDoc(doc(db, "users", auth.currentUser.uid));
+            const userData = userSnap.exists() ? userSnap.data() : {};
+            const empName = userData.name || userData.displayName || auth.currentUser.email || "Unknown Employee";
+
             await addDoc(collection(db, "requests"), {
                 productId: currentSelectedId,
                 productName: document.getElementById("modalProdName").innerText,
+                employeeName: empName, 
                 quantity: Number(finalQty),
+                note: note, // Save note to Firestore
                 status: "pending",
                 createdBy: auth.currentUser.uid,
                 createdAt: serverTimestamp()
@@ -86,27 +79,33 @@ window.submitStockRequest = async function() {
         }
         closeModals();
         loadMyRequests();
-    } catch (e) { alert(e.message); }
+    } catch (e) { 
+        alert("Error: " + e.message); 
+    }
 };
 
 window.submitNewProductRequest = async function() {
     const name = document.getElementById("newProdName").value;
     const qty = document.getElementById("newProdQty").value;
     if (!name || !qty) return alert("Fill all fields");
-
-    await addDoc(collection(db, "requests"), {
-        productName: name,
-        quantity: Number(qty),
-        action: "new_product",
-        status: "pending",
-        createdBy: auth.currentUser.uid,
-        createdAt: serverTimestamp()
-    });
-    closeModals();
-    loadMyRequests();
+    try {
+        const userSnap = await getDoc(doc(db, "users", auth.currentUser.uid));
+        const userData = userSnap.exists() ? userSnap.data() : {};
+        const empName = userData.name || userData.displayName || auth.currentUser.email || "Unknown Employee";
+        await addDoc(collection(db, "requests"), {
+            productName: name,
+            employeeName: empName,
+            quantity: Number(qty),
+            action: "new_product",
+            status: "pending",
+            createdBy: auth.currentUser.uid,
+            createdAt: serverTimestamp()
+        });
+        closeModals();
+        loadMyRequests();
+    } catch (e) { alert(e.message); }
 };
 
-// --- DATA RENDERING ---
 async function loadProducts() {
     const tbody = document.getElementById("productList");
     const snap = await getDocs(collection(db, "products"));
@@ -115,7 +114,10 @@ async function loadProducts() {
         const p = d.data();
         tbody.innerHTML += `
             <tr>
-                <td><strong>${p.name}</strong></td>
+                <td>
+                    <strong>${p.name}</strong><br>
+                    <small style="color:#64748b">${p.size || 'No Size'}</small>
+                </td>
                 <td><span style="font-weight:bold">${p.stock}</span></td>
                 <td style="text-align:right">
                     <div class="btn-group">
@@ -131,33 +133,22 @@ async function loadMyRequests() {
     const box = document.getElementById("myRequests");
     const user = auth.currentUser;
     if(!user) return;
-
     const q = query(collection(db, "requests"), where("createdBy", "==", user.uid));
     const snap = await getDocs(q);
-    
     box.innerHTML = "";
     snap.forEach(d => {
         const r = d.data();
         const type = r.quantity > 0 ? "IN" : "OUT";
-        const isPending = r.status === "pending";
-
         box.innerHTML += `
             <div class="req-item">
                 <div style="display:flex; justify-content:space-between; align-items:center">
                     <span style="font-weight:bold; font-size:0.85rem">${r.productName}</span>
                     <span class="badge badge-${r.status}">${r.status}</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:8px;">
-                    <div style="font-size:0.8rem; color:#64748b">
-                        Type: ${type} | Qty: ${Math.abs(r.quantity)}
-                    </div>
-                    ${isPending ? `
-                        <button onclick="openEditModal('${d.id}', '${r.productName}', ${r.quantity})" 
-                                style="border:none; background:none; color:var(--primary); font-weight:bold; cursor:pointer; font-size:0.75rem;">
-                            Edit
-                        </button>
-                    ` : ''}
+                <div style="font-size:0.75rem; color:#64748b; margin-top:4px">
+                    Qty: ${Math.abs(r.quantity)} | ${type}
                 </div>
+                ${r.note ? `<div style="font-size:0.7rem; color:#94a3b8; font-style:italic; margin-top:2px;">Note: ${r.note}</div>` : ''}
             </div>`;
     });
 }

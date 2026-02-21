@@ -53,14 +53,9 @@
         .btn-submit { background: var(--primary); color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-logout { background: #ef4444; color: white; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; border: none; }
 
-        /* MOBILE RESPONSIVE FIXES */
         @media (max-width: 900px) {
             .container { grid-template-columns: 1fr; margin: 1rem 0; }
-            .card-header h3 { font-size: 1.1rem; }
-            header { padding: 0.75rem 1rem; }
-            
-            /* Make table look better on small screens */
-            table thead { display: none; } /* Hide headers on mobile */
+            table thead { display: none; }
             table tr { display: block; border-bottom: 2px solid #f1f5f9; padding: 10px 0; }
             table td { display: block; text-align: left; padding: 5px 0; border: none; }
             table td:last-child { margin-top: 10px; }
@@ -92,7 +87,8 @@
                     <th style="text-align:right">Actions</th>
                 </tr>
             </thead>
-            <tbody id="productList"></tbody>
+            <tbody id="productList">
+                </tbody>
         </table>
     </div>
 
@@ -118,8 +114,9 @@
 <div id="newProductModal" class="modal-overlay">
     <div class="modal-content">
         <h3>New Item Request</h3>
-        <input type="text" id="newProdName" placeholder="Product Name">
-        <input type="number" id="newProdQty" placeholder="Starting Stock">
+        <input type="text" id="newProdName" placeholder="Product Name (e.g. Laptop Charger)">
+        <input type="text" id="newProdSize" placeholder="Size/Model (e.g. XL, 65W, 15-inch)">
+        <input type="number" id="newProdQty" placeholder="Starting Stock Quantity">
         <button class="btn-submit" style="background:var(--success)" onclick="submitNewProductRequest()">Submit Request</button>
         <button onclick="closeModals()" style="width:100%; background:none; border:none; color:#64748b; margin-top:15px; cursor:pointer;">Close</button>
     </div>
