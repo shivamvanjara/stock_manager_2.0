@@ -2,12 +2,13 @@ import { auth, db } from "./firebase.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { 
     collection, onSnapshot, addDoc, updateDoc, doc, getDoc, getDocs, 
-    serverTimestamp, query, where, deleteDoc, orderBy 
+    serverTimestamp, query, where, deleteDoc, orderBy, limit 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // --- GLOBAL STATE ---
 let allProducts = [];
 let lowStockFilterActive = false;
+let itemsLimit = 8; // MOBILE: Start with 8 items for performance
 
 // --- 1. AUTH & INITIALIZATION ---
 onAuthStateChanged(auth, async (user) => {
@@ -24,7 +25,7 @@ onAuthStateChanged(auth, async (user) => {
     } catch (err) { console.error("Auth Error:", err); }
 });
 
-// --- 2. PRODUCT MODAL LOGIC (ADD/EDIT) ---
+// --- 2. PRODUCT MODAL LOGIC ---
 window.openModal = () => {
     document.getElementById("modalTitle").innerText = "Add New Product";
     document.getElementById("editId").value = "";
@@ -54,37 +55,33 @@ window.handleSave = async () => {
     const size = document.getElementById("psize").value;
     const stock = Number(document.getElementById("pstock").value);
 
-    if (!name || isNaN(stock)) return showToast("Please fill all fields correctly!");
+    if (!name || isNaN(stock)) return showToast("Check inputs!");
 
     const data = { name, size, stock, updatedAt: serverTimestamp() };
 
     try {
         if (id) {
             await updateDoc(doc(db, "products", id), data);
-            showToast("Product Updated Successfully");
+            showToast("Updated!");
         } else {
             await addDoc(collection(db, "products"), data);
-            showToast("New Product Added");
+            showToast("Added!");
         }
         closeModal();
-    } catch (e) { 
-        console.error(e);
-        showToast("Error saving product");
-    }
+    } catch (e) { showToast("Error saving"); }
 };
 
-// --- 3. STOCK ADJUST MODAL LOGIC (IN/OUT) ---
+// --- 3. COMPACT STOCK ADJUST (ADMIN QUICK ACTIONS) ---
 window.adminAdjust = (prodId, type) => {
     const p = allProducts.find(item => item.id === prodId);
     if (!p) return;
 
-    // Set Modal Data
     document.getElementById("stockProdId").value = prodId;
     document.getElementById("stockType").value = type;
     document.getElementById("stockItemName").innerText = `${type}: ${p.name}`;
     document.getElementById("stockAmount").value = "";
+    document.getElementById("stockNote").value = ""; 
     
-    // UI Styling for Button
     const confirmBtn = document.getElementById("stockConfirmBtn");
     confirmBtn.style.background = type === 'IN' ? 'var(--success)' : 'var(--danger)';
     confirmBtn.innerText = `Confirm ${type}`;
@@ -100,20 +97,15 @@ window.confirmStockAdjust = async () => {
     const prodId = document.getElementById("stockProdId").value;
     const type = document.getElementById("stockType").value;
     const amount = Number(document.getElementById("stockAmount").value);
+    const note = document.getElementById("stockNote").value || "Admin Adjustment";
     
-    if (!amount || amount <= 0) {
-        showToast("Please enter a valid quantity");
-        return;
-    }
+    if (!amount || amount <= 0) return showToast("Enter quantity");
 
     const p = allProducts.find(item => item.id === prodId);
     const qtyChange = type === 'IN' ? amount : -amount;
     const newStock = Number(p.stock) + qtyChange;
 
-    if (newStock < 0) {
-        showToast("Stock cannot be negative!");
-        return;
-    }
+    if (newStock < 0) return showToast("Low Stock Error!");
 
     try {
         await updateDoc(doc(db, "products", prodId), { stock: newStock });
@@ -125,35 +117,15 @@ window.confirmStockAdjust = async () => {
             status: "approved",
             createdAt: serverTimestamp(),
             processedAt: serverTimestamp(),
-            note: "Direct Admin Change"
+            note: note
         });
         
         closeStockModal();
-        showToast(`${type} Update Successful`);
-    } catch (e) { 
-        console.error(e);
-        showToast("Error updating stock");
-    }
+        showToast("Stock Synced");
+    } catch (e) { showToast("Error"); }
 };
 
-// --- 4. OTHER ACTIONS & UTILS ---
-window.confirmDelete = async (id) => {
-    if (confirm("Permanently delete this item?")) {
-        try {
-            await deleteDoc(doc(db, "products", id));
-            showToast("Product Deleted");
-        } catch (e) { console.error(e); }
-    }
-};
-
-function showToast(msg) {
-    const t = document.getElementById("toast");
-    if(!t) return;
-    t.innerText = msg;
-    t.classList.add("show");
-    setTimeout(() => t.classList.remove("show"), 3000);
-}
-
+// --- 4. RENDER INVENTORY (8 ITEM LIMIT + PAGINATION) ---
 function listenProducts() {
     onSnapshot(collection(db, "products"), (snap) => {
         allProducts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -173,32 +145,44 @@ function renderInventory() {
         return matchesSearch && matchesLowStock;
     });
 
-    filtered.forEach(p => {
+    const displayList = filtered.slice(0, itemsLimit);
+
+    displayList.forEach(p => {
         const isLow = Number(p.stock) < 10;
         const div = document.createElement("div");
         div.className = `item-card ${isLow ? 'low-stock-alert' : ''}`;
         div.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
                 <span style="font-size:0.6rem; font-weight:800; color:#94a3b8;">${p.size || 'N/A'}</span>
-                <div style="display:flex; gap:10px;">
-                    <button onclick="openEditModal('${p.id}')" style="background:none; border:none; cursor:pointer;">✏️</button>
-                    <button onclick="confirmDelete('${p.id}')" style="background:none; border:none; cursor:pointer; opacity:0.3">🗑️</button>
+                <div>
+                    <button onclick="openEditModal('${p.id}')" style="background:none; border:none; cursor:pointer; font-size:0.8rem;">✏️</button>
+                    <button onclick="confirmDelete('${p.id}')" style="background:none; border:none; cursor:pointer; opacity:0.2; font-size:0.8rem;">🗑️</button>
                 </div>
             </div>
-            <div style="font-weight:700; font-size:0.9rem; min-height:35px; color:var(--primary);">${p.name}</div>
+            <div style="font-weight:700; font-size:0.85rem; color:var(--primary); margin-bottom:4px;">${p.name}</div>
             <div style="display:flex; align-items:center; justify-content:space-between;">
-                <div class="stock-tag">${p.stock}</div>
+                <div class="stock-tag" style="color: ${isLow ? 'var(--danger)' : 'var(--primary)'}; font-size: 1.2rem;">${p.stock}</div>
                 <div style="display:flex; gap:4px;">
-                    <button onclick="adminAdjust('${p.id}', 'IN')" style="background:var(--success); color:white; border:none; padding:5px 10px; border-radius:6px; font-weight:800; cursor:pointer;">+ IN</button>
-                    <button onclick="adminAdjust('${p.id}', 'OUT')" style="background:var(--danger); color:white; border:none; padding:5px 10px; border-radius:6px; font-weight:800; cursor:pointer;">- OUT</button>
+                    <button onclick="adminAdjust('${p.id}', 'IN')" style="background:var(--success); color:white; border:none; padding:4px 8px; border-radius:4px; font-weight:800; font-size:0.65rem;">IN</button>
+                    <button onclick="adminAdjust('${p.id}', 'OUT')" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:4px; font-weight:800; font-size:0.65rem;">OUT</button>
                 </div>
             </div>
-            ${isLow ? '<div style="color:var(--danger); font-size:0.6rem; font-weight:800; margin-top:5px;">⚠️ LOW STOCK</div>' : ''}
+            ${isLow ? '<div style="color:var(--danger); font-size:0.55rem; font-weight:900; margin-top:2px;">⚠️ LOW STOCK</div>' : ''}
         `;
         box.appendChild(div);
     });
+
+    if (filtered.length > itemsLimit) {
+        const moreBtn = document.createElement("button");
+        moreBtn.className = "btn btn-outline";
+        moreBtn.style = "width:100%; margin-top:10px; font-size:0.8rem; grid-column: 1/-1;";
+        moreBtn.innerText = `Show More (+${filtered.length - itemsLimit})`;
+        moreBtn.onclick = () => { itemsLimit += 12; renderInventory(); };
+        box.appendChild(moreBtn);
+    }
 }
 
+// --- 5. ANALYTICS (PREV MONTH & TOP SELLERS RESTORED) ---
 function listenStatsRealtime() {
     const q = query(collection(db, "requests"), where("status", "==", "approved"));
     onSnapshot(q, (snap) => {
@@ -231,6 +215,7 @@ function listenStatsRealtime() {
                 if (isOut) s.outPrev += qty;
             }
 
+            // Top Sellers (Last 30 days)
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(now.getDate() - 30);
             if (isOut && date > thirtyDaysAgo) {
@@ -255,31 +240,49 @@ function updateTopSellersUI(salesMap) {
         const medals = ["🥇", "🥈", "🥉"];
         const row = document.createElement("div");
         row.style.cssText = "display:flex; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:4px;";
-        row.innerHTML = `<div style="display:flex; align-items:center; gap:8px;"><span style="font-size:0.8rem;">${medals[i]}</span><span style="font-size:0.75rem; color:white; font-weight:600;">${item.name}</span></div><span style="font-size:0.7rem; font-weight:800; color:#818cf8;">${item.qty}</span>`;
+        row.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:0.8rem;">${medals[i]}</span>
+                <span style="font-size:0.75rem; color:white; font-weight:600;">${item.name}</span>
+            </div>
+            <span style="font-size:0.7rem; font-weight:800; color:#818cf8;">${item.qty}</span>`;
         listContainer.appendChild(row);
     });
 }
 
+// --- 6. TASKS & SYSTEM ACTIONS ---
 function listenRequests() {
-    const q = query(collection(db, "requests"), where("status", "==", "pending"));
+    const q = query(collection(db, "requests"), orderBy("createdAt", "desc"), limit(20));
     onSnapshot(q, (snap) => {
         const box = document.getElementById("requests");
         const countBadge = document.getElementById("req-count");
-        if(countBadge) countBadge.innerText = snap.size;
+        const pendingItems = snap.docs.filter(d => d.data().status === 'pending');
+        
+        if(countBadge) countBadge.innerText = pendingItems.length;
         if(!box) return;
-        box.innerHTML = snap.empty ? "<p style='text-align:center;color:#94a3b8;font-size:0.8rem;padding:20px;'>No pending tasks</p>" : "";
+
+        box.innerHTML = "";
         snap.forEach(d => {
             const r = d.data();
+            const isApproved = r.status === 'approved';
             const div = document.createElement("div");
-            div.style.cssText = "background:#fff; padding:12px; margin-bottom:10px; border-radius:8px; border-left:4px solid;";
-            div.style.borderLeftColor = r.quantity > 0 ? '#10b981' : '#ef4444';
+            
+            div.style.cssText = `padding:10px; margin-bottom:8px; border-radius:8px; border-left:4px solid; background:${isApproved ? '#f0fdf4' : '#fff'}`;
+            div.style.borderLeftColor = isApproved ? 'var(--success)' : (r.quantity > 0 ? 'var(--success)' : 'var(--danger)');
+            
             div.innerHTML = `
-                <div style="font-size:0.65rem; color:#64748b; font-weight:700;">@${r.employeeName}</div>
-                <div style="font-weight:700; margin:4px 0; font-size:0.85rem;">${r.productName} (x${Math.abs(r.quantity)})</div>
-                <div style="display:flex; gap:8px;">
-                    <button class="btn btn-primary" style="padding:4px 10px; font-size:0.7rem;" onclick="approveRequest('${d.id}', '${r.productId}', ${r.quantity})">Approve</button>
-                    <button class="btn btn-outline" style="padding:4px 10px; font-size:0.7rem;" onclick="rejectRequest('${d.id}')">Reject</button>
-                </div>`;
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:700; font-size:0.8rem;">${r.productName}</span>
+                    <span style="font-weight:900; color:${r.quantity > 0 ? 'var(--success)' : 'var(--danger)'}">${r.quantity > 0 ? '+' : ''}${r.quantity}</span>
+                </div>
+                <div style="font-size:0.65rem; color:#64748b;">${r.employeeName} • ${r.note || ''}</div>
+                ${!isApproved ? `
+                    <div style="display:flex; gap:5px; margin-top:8px;">
+                        <button class="btn btn-primary" style="padding:4px 8px; font-size:0.65rem; flex:1" onclick="approveRequest('${d.id}', '${r.productId}', ${r.quantity})">Approve</button>
+                        <button class="btn btn-outline" style="padding:4px 8px; font-size:0.65rem; flex:1" onclick="rejectRequest('${d.id}')">Reject</button>
+                    </div>
+                ` : `<div style="color:var(--success); font-size:0.6rem; font-weight:800; margin-top:4px;">✅ APPROVED</div>`}
+            `;
             box.appendChild(div);
         });
     });
@@ -293,18 +296,23 @@ window.approveRequest = async (reqId, prodId, qty) => {
             const pSnap = await getDoc(pRef);
             if (pSnap.exists()) await updateDoc(pRef, { stock: Number(pSnap.data().stock) + Number(qty) });
         }
-        showToast("Request Approved");
+        showToast("Approved");
     } catch(e) { console.error(e); }
 };
 
 window.rejectRequest = async (id) => {
     await updateDoc(doc(db, "requests", id), { status: "rejected", processedAt: serverTimestamp() });
-    showToast("Request Rejected");
+    showToast("Rejected");
 };
 
-window.logout = () => signOut(auth).then(() => location.href = "index.html");
-window.toggleLowStockFilter = () => { lowStockFilterActive = !lowStockFilterActive; renderInventory(); };
-window.searchProduct = () => renderInventory();
+window.confirmDelete = async (id) => {
+    if (confirm("Delete permanently?")) {
+        try {
+            await deleteDoc(doc(db, "products", id));
+            showToast("Deleted");
+        } catch (e) { console.error(e); }
+    }
+};
 
 window.downloadPDF = async function() {
     const { jsPDF } = window.jspdf;
@@ -315,7 +323,7 @@ window.downloadPDF = async function() {
     const rows = snap.docs.map(d => {
         const r = d.data();
         const dateObj = r.createdAt?.toDate();
-        const fullDate = dateObj ? `${dateObj.toLocaleDateString()} ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'Processing...';
+        const fullDate = dateObj ? `${dateObj.toLocaleDateString()} ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : '...';
         return [fullDate, r.employeeName || 'Admin', r.productName || 'N/A', Math.abs(r.quantity), r.quantity > 0 ? 'IN' : 'OUT', r.status.toUpperCase(), r.note || '-' ];
     });
 
@@ -330,3 +338,15 @@ window.downloadPDF = async function() {
     });
     docPdf.save(`Report_${Date.now()}.pdf`);
 };
+
+function showToast(msg) {
+    const t = document.getElementById("toast");
+    if(!t) return;
+    t.innerText = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+window.logout = () => signOut(auth).then(() => location.href = "index.html");
+window.toggleLowStockFilter = () => { lowStockFilterActive = !lowStockFilterActive; itemsLimit = 8; renderInventory(); };
+window.searchProduct = () => { itemsLimit = 8; renderInventory(); };
