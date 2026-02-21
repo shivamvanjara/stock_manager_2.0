@@ -2,89 +2,127 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employee Dashboard | StockPro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SMP Worker | Dashboard</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #2563eb;
-            --success: #059669;
+            --primary: #0f172a;
+            --accent: #6366f1;
+            --success: #10b981;
             --warning: #f59e0b;
             --danger: #ef4444;
-            --bg: #f8fafc;
+            --bg: #f1f5f9;
             --text: #1e293b;
+            --radius: 12px;
         }
 
-        body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); padding-bottom: 20px; }
-        
-        header { 
-            background: white; border-bottom: 1px solid #e2e8f0; padding: 0.75rem 1rem; 
-            display: flex; justify-content: space-between; align-items: center; 
-            position: sticky; top: 0; z-index: 10;
+        body { 
+            margin: 0; 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
+            padding-bottom: 20px;
+            overscroll-behavior-y: contain;
         }
+        
+        /* --- BRANDED HEADER --- */
+        header { 
+            background: white; 
+            border-bottom: 1px solid #e2e8f0; 
+            padding: 0.6rem 1rem; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            position: sticky; 
+            top: 0; 
+            z-index: 100;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+
+        .brand-box { display: flex; align-items: center; gap: 8px; }
+        .brand-logo { height: 32px; width: 32px; object-fit: contain; }
+        .brand-name { font-weight: 800; font-size: 0.9rem; color: var(--primary); text-transform: uppercase; }
 
         .container { max-width: 1250px; margin: 1rem auto; padding: 0 1rem; display: grid; grid-template-columns: 2.2fr 1fr; gap: 1.5rem; }
 
-        .section-card { background: white; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); padding: 1.5rem; height: fit-content; }
-        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 10px; }
+        .section-card { background: white; border-radius: var(--radius); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); padding: 1.5rem; height: fit-content; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; }
         
+        /* --- TABLES --- */
         table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; padding: 12px; background: #f8fafc; color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
+        th { text-align: left; padding: 12px; background: #f8fafc; color: #64748b; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; }
+        td { padding: 14px 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
 
-        .btn-group { display: flex; gap: 6px; }
-        .btn-in { background: #dcfce7; color: #166534; padding: 8px 12px; border-radius: 6px; font-weight: bold; border: 1px solid #bbf7d0; cursor: pointer; flex: 1; text-align: center; }
-        .btn-out { background: #fee2e2; color: #991b1b; padding: 8px 12px; border-radius: 6px; font-weight: bold; border: 1px solid #fecaca; cursor: pointer; flex: 1; text-align: center; }
+        .btn-group { display: flex; gap: 8px; }
+        .btn-in { background: #ecfdf5; color: #059669; padding: 10px; border-radius: 8px; font-weight: 800; border: 1px solid #d1fae5; cursor: pointer; flex: 1; font-size: 0.8rem; }
+        .btn-out { background: #fff1f2; color: #e11d48; padding: 10px; border-radius: 8px; font-weight: 800; border: 1px solid #ffe4e6; cursor: pointer; flex: 1; font-size: 0.8rem; }
         
-        #search { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 15px; box-sizing: border-box; font-size: 1rem; }
-        input[type="number"], input[type="text"] { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin: 10px 0; font-size: 1rem; box-sizing: border-box; }
+        #search { width: 100%; padding: 14px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 15px; box-sizing: border-box; font-size: 1rem; font-family: inherit; background: #f8fafc; }
+        #search:focus { outline: none; border-color: var(--accent); background: white; }
 
-        .req-item { padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #e2e8f0; background: #fff; }
-        .badge { font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
+        input[type="number"], input[type="text"] { width: 100%; padding: 12px; border: 2px solid #f1f5f9; border-radius: 10px; margin: 8px 0; font-size: 1rem; box-sizing: border-box; font-family: inherit; }
+
+        .req-item { padding: 12px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #e2e8f0; background: #fff; position: relative; }
+        .badge { font-size: 0.65rem; padding: 4px 8px; border-radius: 6px; font-weight: 800; text-transform: uppercase; }
         .badge-pending { background: #fef3c7; color: #92400e; }
         .badge-approved { background: #dcfce7; color: #166534; }
         .badge-rejected { background: #fee2e2; color: #991b1b; }
 
+        /* --- MODALS --- */
         .modal-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
+            background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
         }
-        .modal-content { background: white; padding: 25px; border-radius: 16px; width: 100%; max-width: 350px; text-align: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 20px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
 
-        .btn-submit { background: var(--primary); color: white; border: none; padding: 14px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        .btn-logout { background: #ef4444; color: white; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; border: none; }
+        .btn-submit { background: var(--primary); color: white; border: none; padding: 15px; width: 100%; border-radius: 10px; font-weight: 800; cursor: pointer; font-size: 1rem; margin-top: 10px; }
+        .btn-logout { background: #f1f5f9; color: var(--danger); padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 700; border: none; font-size: 0.8rem; }
 
         @media (max-width: 900px) {
-            .container { grid-template-columns: 1fr; margin: 1rem 0; }
+            .container { grid-template-columns: 1fr; margin: 0.5rem 0; }
+            header { padding: 0.8rem; }
+            .section-card { border-radius: 0; box-shadow: none; border-bottom: 1px solid #e2e8f0; }
+            
             table thead { display: none; }
-            table tr { display: block; border-bottom: 2px solid #f1f5f9; padding: 10px 0; }
-            table td { display: block; text-align: left; padding: 5px 0; border: none; }
-            table td:last-child { margin-top: 10px; }
-            .btn-group { width: 100%; }
+            table tr { display: block; padding: 15px 0; border-bottom: 1px solid #f1f5f9; }
+            table td { display: block; text-align: left; padding: 4px 0; border: none; }
+            .item-name { font-weight: 800; font-size: 1.1rem; color: var(--primary); }
+            .item-stock { color: var(--accent); font-weight: 700; margin-bottom: 10px; }
+            .btn-group { margin-top: 10px; }
         }
     </style>
 </head>
 <body>
 
 <header>
-    <div style="font-weight: 800; font-size: 1.2rem; color: var(--primary);">📦 StockPro</div>
+    <div class="brand-box">
+        <img src="logo.png" alt="SMP Logo" class="brand-logo">
+        <div class="brand-name">Shree Maruti</div>
+    </div>
     <button class="btn-logout" onclick="logout()">Logout</button>
 </header>
 
 <div class="container">
     <div class="section-card">
         <div class="card-header">
-            <h3 style="margin:0">Inventory</h3>
-            <button onclick="openNewProductModal()" style="background:var(--success); color:white; border:none; padding:8px 12px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.8rem;">+ New Item</button>
+            <h3 style="margin:0; font-weight:800;">Inventory</h3>
+            <button onclick="openNewProductModal()" style="background:var(--accent); color:white; border:none; padding:10px 14px; border-radius:8px; font-weight:800; cursor:pointer; font-size:0.75rem;">+ New Bag/Item</button>
         </div>
         
-        <input id="search" placeholder="🔍 Search products..." onkeyup="searchProduct()">
+        <input id="search" placeholder="🔍 Search bags, plastic, etc..." onkeyup="searchProduct()">
         
         <table>
             <thead>
                 <tr>
-                    <th>Product Details</th>
-                    <th>Stock</th>
-                    <th style="text-align:right">Actions</th>
+                    <th>Item Description</th>
+                    <th>Current Stock</th>
+                    <th style="text-align:right">Action</th>
                 </tr>
             </thead>
             <tbody id="productList">
@@ -93,7 +131,7 @@
     </div>
 
     <div class="section-card">
-        <h3 style="margin-bottom:15px">My Activity</h3>
+        <h3 style="margin-bottom:15px; font-weight:800;">My Recent Logs</h3>
         <div id="myRequests"></div>
     </div>
 </div>
@@ -101,11 +139,14 @@
 <div id="actionModal" class="modal-overlay">
     <div class="modal-content">
         <div id="modalTypeBadge" class="badge" style="margin-bottom:10px;"></div>
-        <h3 id="modalProdName" style="margin:5px 0"></h3>
-        <input type="number" id="reqQty" placeholder="Enter quantity" inputmode="numeric">
-        <input type="text" id="reqNote" placeholder="Add a note (e.g. Broken item, Restock)" style="font-size: 0.85rem; margin-bottom: 10px;">
+        <h3 id="modalProdName" style="margin:5px 0; font-weight:800;"></h3>
+        <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 15px;">Enter quantity to update stock</p>
+        
+        <input type="number" id="reqQty" placeholder="Quantity (e.g. 50)" inputmode="numeric">
+        <input type="text" id="reqNote" placeholder="Reason (Optional)">
+        
         <div style="display:flex; gap:10px; margin-top:15px;">
-            <button onclick="closeModals()" style="flex:1; background:#f1f5f9; border:none; padding:12px; border-radius:8px; cursor:pointer; font-weight:bold;">Cancel</button>
+            <button onclick="closeModals()" style="flex:1; background:#f1f5f9; border:none; padding:12px; border-radius:10px; cursor:pointer; font-weight:700; color: #64748b;">Cancel</button>
             <button class="btn-submit" id="mainSubmitBtn" onclick="submitStockRequest()" style="flex:1; margin:0;">Confirm</button>
         </div>
     </div>
@@ -113,15 +154,24 @@
 
 <div id="newProductModal" class="modal-overlay">
     <div class="modal-content">
-        <h3>New Item Request</h3>
-        <input type="text" id="newProdName" placeholder="Product Name (e.g. Laptop Charger)">
-        <input type="text" id="newProdSize" placeholder="Size/Model (e.g. XL, 65W, 15-inch)">
-        <input type="number" id="newProdQty" placeholder="Starting Stock Quantity">
-        <button class="btn-submit" style="background:var(--success)" onclick="submitNewProductRequest()">Submit Request</button>
-        <button onclick="closeModals()" style="width:100%; background:none; border:none; color:#64748b; margin-top:15px; cursor:pointer;">Close</button>
+        <h3 style="font-weight:800;">Request New Item</h3>
+        <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 15px;">Add a new product to the master list</p>
+        
+        <input type="text" id="newProdName" placeholder="Item Name (e.g. Pickup Bag 10x12)">
+        <input type="text" id="newProdSize" placeholder="Size/Details (e.g. 50 Micron, White)">
+        <input type="number" id="newProdQty" placeholder="Starting Quantity">
+        
+        <button class="btn-submit" style="background:var(--accent)" onclick="submitNewProductRequest()">Submit to Admin</button>
+        <button onclick="closeModals()" style="width:100%; background:none; border:none; color:#64748b; margin-top:15px; cursor:pointer; font-weight:700;">Go Back</button>
     </div>
 </div>
 
+<script>
+    function closeModals() {
+        document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+    }
+    // Note: All actual data logic remains in your js/employee.js file
+</script>
 <script type="module" src="js/employee.js"></script>
 </body>
 </html>

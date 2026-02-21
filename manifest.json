@@ -1,15 +1,15 @@
 {
-  "name": "StockPro System",
   "short_name": "StockPro",
-  "start_url": "/index.html", 
-  "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "name": "StockPro Premium Inventory",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/2897/2897830.png",
+      "src": "logo.png",
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "start_url": "/index.html",
+  "display": "standalone",
+  "theme_color": "#0f172a",
+  "background_color": "#f1f5f9"
 }

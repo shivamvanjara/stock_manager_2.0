@@ -3,15 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>StockPro | Access</title>
+    <title>Shree Maruti Plastic | Access</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #2563eb;
-            --success: #059669;
+            --primary: #0f172a;
+            --success: #10b981;
             --slate-50: #f8fafc;
             --slate-200: #e2e8f0;
             --slate-800: #1e293b;
+            --accent: #6366f1;
         }
 
         body {
@@ -25,16 +31,25 @@
             background: white; padding: 40px; width: 100%; max-width: 400px;
             border-radius: 28px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
             border: 1px solid white; box-sizing: border-box;
+            position: relative;
         }
 
         .logo-section { text-align: center; margin-bottom: 32px; }
-        .logo-icon { font-size: 42px; margin-bottom: 8px; display: block; }
         
-        h2 { margin: 0; color: var(--slate-800); font-weight: 800; font-size: 1.6rem; letter-spacing: -0.02em; }
-        p { color: #64748b; font-size: 0.95rem; margin-top: 6px; }
+        .brand-img {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+            margin-bottom: 12px;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.05));
+        }
+        
+        h2 { margin: 0; color: var(--slate-800); font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; text-transform: uppercase; }
+        .estd { color: var(--accent); font-size: 0.7rem; font-weight: 700; letter-spacing: 1px; }
+        p { color: #64748b; font-size: 0.9rem; margin-top: 8px; }
 
         .input-wrapper { margin-bottom: 18px; }
-        label { display: block; font-size: 0.8rem; font-weight: 700; color: var(--slate-800); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.03em; }
+        label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--slate-800); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.03em; }
         
         input {
             width: 100%; padding: 14px 18px; border: 2px solid #f1f5f9; border-radius: 14px;
@@ -42,7 +57,7 @@
             background: #f8fafc; color: var(--slate-800);
         }
 
-        input:focus { outline: none; border-color: var(--primary); background: white; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08); }
+        input:focus { outline: none; border-color: var(--accent); background: white; box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.08); }
 
         button {
             width: 100%; padding: 16px; border: none; border-radius: 14px;
@@ -50,33 +65,36 @@
             font-family: inherit; margin-top: 10px;
         }
 
-        .btn-main { background: var(--primary); color: white; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); }
-        .btn-main:hover { transform: translateY(-2px); box-shadow: 0 8px 12px rgba(37, 99, 235, 0.2); }
+        .btn-main { background: var(--primary); color: white; box-shadow: 0 4px 6px rgba(15, 23, 42, 0.2); }
+        .btn-main:hover { transform: translateY(-2px); background: #1e293b; }
 
-        .switch-text { text-align: center; margin-top: 24px; font-size: 0.9rem; color: #64748b; }
-        .switch-link { color: var(--primary); font-weight: 700; cursor: pointer; text-decoration: none; }
+        .switch-text { text-align: center; margin-top: 24px; font-size: 0.85rem; color: #64748b; }
+        .switch-link { color: var(--accent); font-weight: 700; cursor: pointer; text-decoration: none; }
 
         /* Toggle Views */
         #registerView { display: none; }
         .show-register #loginView { display: none; }
         .show-register #registerView { display: block; }
 
-        .loading-state { opacity: 0.6; pointer-events: none; }
+        @media (max-width: 480px) {
+            .auth-card { padding: 30px 20px; border-radius: 0; height: 100vh; display: flex; flex-direction: column; justify-content: center; }
+        }
     </style>
 </head>
-<body>
+<body id="bodyTag">
 
 <div class="auth-card" id="authContainer">
     <div id="loginView">
         <div class="logo-section">
-            <span class="logo-icon">📦</span>
-            <h2>Welcome Back</h2>
-            <p>Enter your details to access StockPro</p>
+            <img src="logo.png" alt="Shree Maruti Plastic Logo" class="brand-img">
+            <div class="estd">SINCE 2008</div>
+            <h2>Shree Maruti</h2>
+            <p>Inventory Portal Access</p>
         </div>
 
         <div class="input-wrapper">
-            <label>Email Address</label>
-            <input id="loginEmail" type="email" placeholder="name@company.com">
+            <label>Staff Email</label>
+            <input id="loginEmail" type="email" placeholder="email@maruti.com">
         </div>
 
         <div class="input-wrapper">
@@ -84,43 +102,54 @@
             <input id="loginPass" type="password" placeholder="••••••••">
         </div>
 
-        <button class="btn-main" onclick="login()">Sign In to Dashboard</button>
+        <button class="btn-main" onclick="login()">Sign In to Portal</button>
         
         <div class="switch-text">
-            New here? <span class="switch-link" onclick="toggleView(true)">Create an account</span>
+            New Staff? <span class="switch-link" onclick="toggleView(true)">Register here</span>
         </div>
     </div>
 
     <div id="registerView">
         <div class="logo-section">
-            <span class="logo-icon">🛡️</span>
-            <h2>Join StockPro</h2>
-            <p>Create your employee account today</p>
+            <img src="logo.png" alt="Shree Maruti Plastic Logo" class="brand-img" style="width: 60px; height: 60px;">
+            <h2>Staff Signup</h2>
+            <p>Create your internal account</p>
         </div>
 
         <div class="input-wrapper">
             <label>Full Name</label>
-            <input id="regName" type="text" placeholder="John Doe">
+            <input id="regName" type="text" placeholder="Enter your name">
         </div>
 
         <div class="input-wrapper">
-            <label>Email Address</label>
-            <input id="regEmail" type="email" placeholder="name@company.com">
+            <label>Work Email</label>
+            <input id="regEmail" type="email" placeholder="name@maruti.com">
         </div>
 
         <div class="input-wrapper">
-            <label>Set Password</label>
+            <label>Create Password</label>
             <input id="regPass" type="password" placeholder="Min. 6 characters">
         </div>
 
-        <button class="btn-main" style="background: var(--success); box-shadow: 0 4px 6px rgba(5, 150, 105, 0.2);" onclick="register()">Register Account</button>
+        <button class="btn-main" style="background: var(--success);" onclick="register()">Create Account</button>
         
         <div class="switch-text">
-            Already have an account? <span class="switch-link" onclick="toggleView(false)">Sign In</span>
+            Already registered? <span class="switch-link" onclick="toggleView(false)">Sign In</span>
         </div>
     </div>
 </div>
 
+<script>
+    // Simple toggle logic
+    function toggleView(isRegister) {
+        const container = document.getElementById('bodyTag');
+        if(isRegister) {
+            container.classList.add('show-register');
+        } else {
+            container.classList.remove('show-register');
+        }
+    }
+</script>
 <script type="module" src="js/login.js"></script>
 </body>
 </html>

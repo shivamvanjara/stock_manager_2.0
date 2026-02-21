@@ -2,134 +2,261 @@ import { auth, db } from "./firebase.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { 
     collection, onSnapshot, addDoc, updateDoc, doc, getDoc, getDocs, 
-    serverTimestamp, query, where, deleteDoc 
+    serverTimestamp, query, where, deleteDoc, orderBy 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// --- 1. AUTH PROTECTION ---
+// --- GLOBAL STATE ---
+let allProducts = [];
+let lowStockFilterActive = false;
+
+// --- 1. AUTH & INITIALIZATION ---
 onAuthStateChanged(auth, async (user) => {
     if (!user) { location.href = "index.html"; return; }
-    
     try {
         const snap = await getDoc(doc(db, "users", user.uid));
         if (!snap.exists() || snap.data().role !== "admin") {
-            alert("Access Denied.");
             signOut(auth).then(() => location.href = "index.html");
             return;
         }
-        cleanupOldTransactions();
         listenProducts();
         listenRequests();
         listenStatsRealtime(); 
     } catch (err) { console.error("Auth Error:", err); }
 });
 
-window.logout = () => signOut(auth).then(() => location.href = "index.html");
+// --- 2. PRODUCT MODAL LOGIC (ADD/EDIT) ---
+window.openModal = () => {
+    document.getElementById("modalTitle").innerText = "Add New Product";
+    document.getElementById("editId").value = "";
+    document.getElementById("pname").value = "";
+    document.getElementById("psize").value = "";
+    document.getElementById("pstock").value = "";
+    document.getElementById("productModal").style.display = "flex";
+};
 
-// --- 2. HOUSEKEEPING ---
-async function cleanupOldTransactions() {
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-    const qReq = query(collection(db, "requests"), where("status", "!=", "pending"), where("createdAt", "<", sixtyDaysAgo));
-    const snapReq = await getDocs(qReq);
-    snapReq.forEach(d => deleteDoc(doc(db, "requests", d.id)));
+window.openEditModal = (id) => {
+    const p = allProducts.find(x => x.id === id);
+    document.getElementById("modalTitle").innerText = "Edit Product";
+    document.getElementById("editId").value = id;
+    document.getElementById("pname").value = p.name;
+    document.getElementById("psize").value = p.size || "";
+    document.getElementById("pstock").value = p.stock;
+    document.getElementById("productModal").style.display = "flex";
+};
+
+window.closeModal = () => {
+    document.getElementById("productModal").style.display = "none";
+};
+
+window.handleSave = async () => {
+    const id = document.getElementById("editId").value;
+    const name = document.getElementById("pname").value;
+    const size = document.getElementById("psize").value;
+    const stock = Number(document.getElementById("pstock").value);
+
+    if (!name || isNaN(stock)) return showToast("Please fill all fields correctly!");
+
+    const data = { name, size, stock, updatedAt: serverTimestamp() };
+
+    try {
+        if (id) {
+            await updateDoc(doc(db, "products", id), data);
+            showToast("Product Updated Successfully");
+        } else {
+            await addDoc(collection(db, "products"), data);
+            showToast("New Product Added");
+        }
+        closeModal();
+    } catch (e) { 
+        console.error(e);
+        showToast("Error saving product");
+    }
+};
+
+// --- 3. STOCK ADJUST MODAL LOGIC (IN/OUT) ---
+window.adminAdjust = (prodId, type) => {
+    const p = allProducts.find(item => item.id === prodId);
+    if (!p) return;
+
+    // Set Modal Data
+    document.getElementById("stockProdId").value = prodId;
+    document.getElementById("stockType").value = type;
+    document.getElementById("stockItemName").innerText = `${type}: ${p.name}`;
+    document.getElementById("stockAmount").value = "";
+    
+    // UI Styling for Button
+    const confirmBtn = document.getElementById("stockConfirmBtn");
+    confirmBtn.style.background = type === 'IN' ? 'var(--success)' : 'var(--danger)';
+    confirmBtn.innerText = `Confirm ${type}`;
+
+    document.getElementById("stockModal").style.display = "flex";
+};
+
+window.closeStockModal = () => {
+    document.getElementById("stockModal").style.display = "none";
+};
+
+window.confirmStockAdjust = async () => {
+    const prodId = document.getElementById("stockProdId").value;
+    const type = document.getElementById("stockType").value;
+    const amount = Number(document.getElementById("stockAmount").value);
+    
+    if (!amount || amount <= 0) {
+        showToast("Please enter a valid quantity");
+        return;
+    }
+
+    const p = allProducts.find(item => item.id === prodId);
+    const qtyChange = type === 'IN' ? amount : -amount;
+    const newStock = Number(p.stock) + qtyChange;
+
+    if (newStock < 0) {
+        showToast("Stock cannot be negative!");
+        return;
+    }
+
+    try {
+        await updateDoc(doc(db, "products", prodId), { stock: newStock });
+        await addDoc(collection(db, "requests"), {
+            productId: prodId,
+            productName: p.name,
+            employeeName: "Admin",
+            quantity: qtyChange,
+            status: "approved",
+            createdAt: serverTimestamp(),
+            processedAt: serverTimestamp(),
+            note: "Direct Admin Change"
+        });
+        
+        closeStockModal();
+        showToast(`${type} Update Successful`);
+    } catch (e) { 
+        console.error(e);
+        showToast("Error updating stock");
+    }
+};
+
+// --- 4. OTHER ACTIONS & UTILS ---
+window.confirmDelete = async (id) => {
+    if (confirm("Permanently delete this item?")) {
+        try {
+            await deleteDoc(doc(db, "products", id));
+            showToast("Product Deleted");
+        } catch (e) { console.error(e); }
+    }
+};
+
+function showToast(msg) {
+    const t = document.getElementById("toast");
+    if(!t) return;
+    t.innerText = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 3000);
 }
 
-// --- 3. REAL-TIME ANALYTICS ---
+function listenProducts() {
+    onSnapshot(collection(db, "products"), (snap) => {
+        allProducts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderInventory();
+    });
+}
+
+function renderInventory() {
+    const box = document.getElementById("products-list");
+    const searchVal = document.getElementById("search").value.toLowerCase();
+    if(!box) return;
+    box.innerHTML = "";
+    
+    let filtered = allProducts.filter(p => {
+        const matchesSearch = p.name.toLowerCase().includes(searchVal) || (p.size && p.size.toLowerCase().includes(searchVal));
+        const matchesLowStock = lowStockFilterActive ? (Number(p.stock) < 10) : true;
+        return matchesSearch && matchesLowStock;
+    });
+
+    filtered.forEach(p => {
+        const isLow = Number(p.stock) < 10;
+        const div = document.createElement("div");
+        div.className = `item-card ${isLow ? 'low-stock-alert' : ''}`;
+        div.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:0.6rem; font-weight:800; color:#94a3b8;">${p.size || 'N/A'}</span>
+                <div style="display:flex; gap:10px;">
+                    <button onclick="openEditModal('${p.id}')" style="background:none; border:none; cursor:pointer;">✏️</button>
+                    <button onclick="confirmDelete('${p.id}')" style="background:none; border:none; cursor:pointer; opacity:0.3">🗑️</button>
+                </div>
+            </div>
+            <div style="font-weight:700; font-size:0.9rem; min-height:35px; color:var(--primary);">${p.name}</div>
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+                <div class="stock-tag">${p.stock}</div>
+                <div style="display:flex; gap:4px;">
+                    <button onclick="adminAdjust('${p.id}', 'IN')" style="background:var(--success); color:white; border:none; padding:5px 10px; border-radius:6px; font-weight:800; cursor:pointer;">+ IN</button>
+                    <button onclick="adminAdjust('${p.id}', 'OUT')" style="background:var(--danger); color:white; border:none; padding:5px 10px; border-radius:6px; font-weight:800; cursor:pointer;">- OUT</button>
+                </div>
+            </div>
+            ${isLow ? '<div style="color:var(--danger); font-size:0.6rem; font-weight:800; margin-top:5px;">⚠️ LOW STOCK</div>' : ''}
+        `;
+        box.appendChild(div);
+    });
+}
+
 function listenStatsRealtime() {
     const q = query(collection(db, "requests"), where("status", "==", "approved"));
-    
     onSnapshot(q, (snap) => {
         const now = new Date();
         const todayStr = now.toDateString();
-        const sevenDaysAgo = new Date(); 
-        sevenDaysAgo.setDate(now.getDate() - 7);
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-        const prevMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+        const thisMonth = now.getMonth();
+        const thisYear = now.getFullYear();
+        
+        const prevMonth = thisMonth === 0 ? 11 : thisMonth - 1;
+        const prevYear = thisMonth === 0 ? thisYear - 1 : thisYear;
 
-        let s = {
-            inToday: 0, in7d: 0, inMonth: 0, inPrev: 0,
-            outToday: 0, out7d: 0, outMonth: 0, outPrev: 0
-        };
+        let salesMap = {}; 
+        let s = { inToday: 0, outToday: 0, inMonth: 0, outMonth: 0, outPrev: 0 };
 
         snap.forEach(d => {
             const r = d.data();
             const date = r.createdAt?.toDate();
-            if(!date) return;
+            if(!date) return; 
 
-            const qty = Number(r.quantity);
-            const absQty = Math.abs(qty);
-            
-            const isToday = date.toDateString() === todayStr;
-            const isLast7 = date >= sevenDaysAgo;
-            const isCurrentMonth = date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-            const isPrevMonth = date.getMonth() === prevMonth && date.getFullYear() === prevMonthYear;
+            const qty = Math.abs(Number(r.quantity));
+            const isOut = Number(r.quantity) < 0;
 
-            if (qty > 0) { 
-                if (isToday) s.inToday += absQty;
-                if (isLast7) s.in7d += absQty;
-                if (isCurrentMonth) s.inMonth += absQty;
-                if (isPrevMonth) s.inPrev += absQty;
-            } else {
-                if (isToday) s.outToday += absQty;
-                if (isLast7) s.out7d += absQty;
-                if (isCurrentMonth) s.outMonth += absQty;
-                if (isPrevMonth) s.outPrev += absQty;
+            if (date.toDateString() === todayStr) {
+                if (isOut) s.outToday += qty; else s.inToday += qty;
+            }
+            if (date.getMonth() === thisMonth && date.getFullYear() === thisYear) {
+                if (isOut) s.outMonth += qty; else s.inMonth += qty;
+            }
+            if (date.getMonth() === prevMonth && date.getFullYear() === prevYear) {
+                if (isOut) s.outPrev += qty;
+            }
+
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(now.getDate() - 30);
+            if (isOut && date > thirtyDaysAgo) {
+                salesMap[r.productName] = (salesMap[r.productName] || 0) + qty;
             }
         });
 
-        const update = (id, val) => {
-            const el = document.getElementById(id);
-            if(el) el.innerText = val;
-        };
-        update("inToday", s.inToday); update("in7", s.in7d); update("inMonth", s.inMonth); update("inPrev", s.inPrev);
-        update("outToday", s.outToday); update("out7", s.out7d); update("outMonth", s.outMonth); update("outPrev", s.outPrev);
+        const setVal = (id, val) => { if(document.getElementById(id)) document.getElementById(id).innerText = val.toLocaleString(); };
+        setVal("inToday", s.inToday); setVal("outToday", s.outToday);
+        setVal("inMonth", s.inMonth); setVal("outMonth", s.outMonth);
+        setVal("outPrev", s.outPrev);
+        updateTopSellersUI(salesMap);
     });
 }
 
-// --- 4. EXPORT ---
-window.downloadTransactions = async function() {
-    const q = query(collection(db, "requests"), where("status", "!=", "pending"));
-    const snap = await getDocs(q);
-    let csv = "Date,Employee,Product,Quantity,Type,Status,Note\n";
-    snap.forEach(doc => {
-        const r = doc.data();
-        const type = r.quantity > 0 ? "IN" : "OUT";
-        const note = r.note ? r.note.replace(/,/g, " ") : ""; // Remove commas for CSV safety
-        csv += `${r.createdAt?.toDate().toLocaleDateString()},${r.employeeName},${r.productName},${Math.abs(r.quantity)},${type},${r.status},${note}\n`;
-    });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `StockReport_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-};
-
-// --- 5. LISTENERS ---
-function listenProducts() {
-    onSnapshot(collection(db, "products"), (snap) => {
-        const box = document.getElementById("products");
-        box.innerHTML = "";
-        snap.forEach(d => {
-            const p = d.data();
-            const isLow = p.stock < 5; 
-            
-            box.innerHTML += `
-                <div class="prod-card ${isLow ? 'low-stock' : ''}" style="border-top: 4px solid ${isLow ? '#f43f5e' : '#10b981'}">
-                    <div style="display:flex; justify-content:space-between">
-                        <small style="font-weight:800; color:#64748b">SIZE: ${p.size || 'N/A'}</small>
-                        <div>
-                            <button onclick="editProductDirectly('${d.id}', '${p.name}', ${p.stock})" style="font-size:0.6rem">EDIT</button>
-                            <button onclick="deleteProduct('${d.id}', '${p.name}')" style="font-size:0.6rem; color:red">DEL</button>
-                        </div>
-                    </div>
-                    <div style="font-weight:800; margin:5px 0">${p.name}</div>
-                    <span class="stock-badge">${p.stock}</span>
-                    ${isLow ? '<br><small style="color:#f43f5e; font-weight:700; font-size:0.6rem">⚠️ LOW STOCK</small>' : ''}
-                </div>`;
-        });
+function updateTopSellersUI(salesMap) {
+    const listContainer = document.getElementById("top-sellers-list");
+    if(!listContainer) return;
+    const sorted = Object.entries(salesMap).map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty).slice(0, 3);
+    listContainer.innerHTML = sorted.length > 0 ? "" : "<p style='font-size:0.7rem; color:#94a3b8;'>No sales data</p>";
+    sorted.forEach((item, i) => {
+        const medals = ["🥇", "🥈", "🥉"];
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:4px;";
+        row.innerHTML = `<div style="display:flex; align-items:center; gap:8px;"><span style="font-size:0.8rem;">${medals[i]}</span><span style="font-size:0.75rem; color:white; font-weight:600;">${item.name}</span></div><span style="font-size:0.7rem; font-weight:800; color:#818cf8;">${item.qty}</span>`;
+        listContainer.appendChild(row);
     });
 }
 
@@ -137,74 +264,69 @@ function listenRequests() {
     const q = query(collection(db, "requests"), where("status", "==", "pending"));
     onSnapshot(q, (snap) => {
         const box = document.getElementById("requests");
-        box.innerHTML = snap.empty ? "<p style='text-align:center;color:#94a3b8'>Clear!</p>" : "";
+        const countBadge = document.getElementById("req-count");
+        if(countBadge) countBadge.innerText = snap.size;
+        if(!box) return;
+        box.innerHTML = snap.empty ? "<p style='text-align:center;color:#94a3b8;font-size:0.8rem;padding:20px;'>No pending tasks</p>" : "";
         snap.forEach(d => {
             const r = d.data();
-            box.innerHTML += `
-                <div class="req-item" style="border-left: 4px solid ${r.quantity > 0 ? '#10b981' : '#f43f5e'}">
-                    <small style="color:var(--primary); font-weight:bold;">@${r.employeeName}</small>
-                    <div style="font-weight:800">${r.productName} (x${Math.abs(r.quantity)})</div>
-                    
-                    ${r.note ? `<div style="font-size:0.75rem; background:#f1f5f9; padding:6px; border-radius:4px; margin-top:6px; color:#475569; border: 1px dashed #cbd5e1">📝 ${r.note}</div>` : ''}
-
-                    <div style="display:flex; gap:5px; margin-top:10px">
-                        <button class="btn-approve" onclick="approveRequest('${d.id}', '${r.productId}', ${r.quantity})">OK</button>
-                        <button class="btn-reject" onclick="rejectRequest('${d.id}')">X</button>
-                    </div>
+            const div = document.createElement("div");
+            div.style.cssText = "background:#fff; padding:12px; margin-bottom:10px; border-radius:8px; border-left:4px solid;";
+            div.style.borderLeftColor = r.quantity > 0 ? '#10b981' : '#ef4444';
+            div.innerHTML = `
+                <div style="font-size:0.65rem; color:#64748b; font-weight:700;">@${r.employeeName}</div>
+                <div style="font-weight:700; margin:4px 0; font-size:0.85rem;">${r.productName} (x${Math.abs(r.quantity)})</div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-primary" style="padding:4px 10px; font-size:0.7rem;" onclick="approveRequest('${d.id}', '${r.productId}', ${r.quantity})">Approve</button>
+                    <button class="btn btn-outline" style="padding:4px 10px; font-size:0.7rem;" onclick="rejectRequest('${d.id}')">Reject</button>
                 </div>`;
+            box.appendChild(div);
         });
     });
 }
 
-// --- 6. ACTIONS ---
 window.approveRequest = async (reqId, prodId, qty) => {
     try {
         await updateDoc(doc(db, "requests", reqId), { status: "approved", processedAt: serverTimestamp() });
-        // Only update stock if it's a standard stock request (has prodId)
         if(prodId && prodId !== "undefined") {
             const pRef = doc(db, "products", prodId);
             const pSnap = await getDoc(pRef);
             if (pSnap.exists()) await updateDoc(pRef, { stock: Number(pSnap.data().stock) + Number(qty) });
         }
-    } catch(e) { alert(e.message); }
+        showToast("Request Approved");
+    } catch(e) { console.error(e); }
 };
 
 window.rejectRequest = async (id) => {
-    if(confirm("Reject this request?")) {
-        await updateDoc(doc(db, "requests", id), { status: "rejected", processedAt: serverTimestamp() });
-    }
+    await updateDoc(doc(db, "requests", id), { status: "rejected", processedAt: serverTimestamp() });
+    showToast("Request Rejected");
 };
 
-window.deleteProduct = async (id, name) => {
-    if(confirm(`Delete ${name} forever?`)) {
-        await deleteDoc(doc(db, "products", id));
-    }
-};
+window.logout = () => signOut(auth).then(() => location.href = "index.html");
+window.toggleLowStockFilter = () => { lowStockFilterActive = !lowStockFilterActive; renderInventory(); };
+window.searchProduct = () => renderInventory();
 
-window.addProduct = async function() {
-    const name = document.getElementById("pname").value;
-    const size = document.getElementById("psize").value; 
-    const stock = document.getElementById("pstock").value;
-    if(!name || !stock) return alert("Fill Name and Stock");
-    await addDoc(collection(db, "products"), { 
-        name, 
-        size: size || "N/A", 
-        stock: Number(stock), 
-        updatedAt: serverTimestamp() 
+window.downloadPDF = async function() {
+    const { jsPDF } = window.jspdf;
+    const docPdf = new jsPDF('l', 'mm', 'a4'); 
+    const q = query(collection(db, "requests"), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    
+    const rows = snap.docs.map(d => {
+        const r = d.data();
+        const dateObj = r.createdAt?.toDate();
+        const fullDate = dateObj ? `${dateObj.toLocaleDateString()} ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'Processing...';
+        return [fullDate, r.employeeName || 'Admin', r.productName || 'N/A', Math.abs(r.quantity), r.quantity > 0 ? 'IN' : 'OUT', r.status.toUpperCase(), r.note || '-' ];
     });
-    document.getElementById("pname").value = ""; 
-    document.getElementById("pstock").value = ""; 
-    document.getElementById("psize").value = "";
-};
 
-window.searchProduct = () => {
-    const val = document.getElementById("search").value.toLowerCase();
-    document.querySelectorAll(".prod-card").forEach(c => {
-        c.style.display = c.innerText.toLowerCase().includes(val) ? "" : "none";
+    docPdf.setFontSize(18);
+    docPdf.text("Inventory Report", 14, 20);
+    docPdf.autoTable({
+        startY: 32,
+        head: [['Date & Time', 'User', 'Product', 'Qty', 'Type', 'Status', 'Note']],
+        body: rows,
+        theme: 'striped',
+        headStyles: { fillColor: [15, 23, 42], fontSize: 10 }
     });
-};
-
-window.editProductDirectly = async (id, name, cur) => {
-    const val = prompt(`Update stock for ${name}:`, cur);
-    if (val !== null && val !== "") await updateDoc(doc(db, "products", id), { stock: Number(val) });
+    docPdf.save(`Report_${Date.now()}.pdf`);
 };
